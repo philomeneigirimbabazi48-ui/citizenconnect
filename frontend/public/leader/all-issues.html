@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CitizenConnect — All Issues</title>
+  <link rel="stylesheet" href="/css/main.css">
+</head>
+<body>
+<div class="app-shell">
+  <header class="topbar" id="topbar"></header>
+  <div class="main-body">
+    <nav class="sidebar">
+      <div class="sidebar-section">
+        <div class="sidebar-label">Leader Panel</div>
+        <a class="nav-link" href="dashboard.html"><span class="icon">📊</span> Dashboard</a>
+        <a class="nav-link active" href="all-issues.html"><span class="icon">📥</span> All Issues</a>
+        <a class="nav-link" href="reports.html"><span class="icon">📈</span> Reports</a>
+        <a class="nav-link" href="notifications.html"><span class="icon">🔔</span> Notifications</a>
+      </div>
+    </nav>
+    <main class="content-area">
+      <h2 style="font-size:20px;font-weight:600;margin-bottom:1.5rem">All Citizen Issues</h2>
+
+      <!-- Filters -->
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:1.5rem;padding:1rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg)">
+        <select id="f-status" onchange="loadIssues()" style="padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;background:var(--surface)">
+          <option value="">All statuses</option>
+          <option value="pending">Pending</option>
+          <option value="in_progress">In Progress</option>
+          <option value="resolved">Resolved</option>
+          <option value="closed">Closed</option>
+          <option value="rejected">Rejected</option>
+        </select>
+        <select id="f-cat" onchange="loadIssues()" style="padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;background:var(--surface)">
+          <option value="">All categories</option>
+          <option>Infrastructure</option><option>Roads</option><option>Sanitation</option>
+          <option>Water</option><option>Health</option><option>Education</option>
+          <option>Security</option><option>Agriculture</option><option>Environment</option><option>Other</option>
+        </select>
+        <input type="text" id="f-district" placeholder="Filter by district..." onchange="loadIssues()"
+          style="padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;background:var(--surface);min-width:160px">
+      </div>
+
+      <div id="content"><div class="loading"><div class="spinner"></div></div></div>
+    </main>
+  </div>
+</div>
+<script src="/js/app.js"></script>
+<script>
+  requireAuth('leader');
+  buildTopbar(document.getElementById('topbar'), true);
+
+  // Pre-select from query string
+  const qs = new URLSearchParams(location.search);
+  if (qs.get('status')) document.getElementById('f-status').value = qs.get('status');
+
+  loadIssues();
+
+  async function loadIssues() {
+    const params = { limit: 50 };
+    const status = document.getElementById('f-status').value;
+    const cat = document.getElementById('f-cat').value;
+    const district = document.getElementById('f-district').value;
+    if (status) params.status = status;
+    if (cat) params.category = cat;
+    if (district) params.district = district;
+
+    try {
+      const data = await API.getIssues(params);
+      const c = document.getElementById('content');
+
+      if (!data.issues.length) {
+        c.innerHTML = `<div class="empty-state"><div class="icon">📭</div><h3>No issues found</h3><p>Try adjusting your filters.</p></div>`;
+        return;
+      }
+
+      c.innerHTML = `<p style="font-size:13px;color:var(--text-muted);margin-bottom:1rem">${data.total} issue${data.total !== 1 ? 's' : ''} found</p>` +
+        data.issues.map(issue => `
+          <a class="issue-item" href="issue-respond.html?id=${issue._id}"
+            style="${issue.status === 'pending' ? 'border-left:3px solid var(--amber)' : issue.status === 'in_progress' ? 'border-left:3px solid var(--blue)' : ''}">
+            <div class="issue-item-header">
+              <div>
+                <div class="issue-item-title">${issue.title}</div>
+                <div class="issue-item-meta">
+                  <span>🏷️ ${issue.category}</span>
+                  <span>${priorityBadge(issue.priority)}</span>
+                  <span>📍 ${issue.location.description}</span>
+                  <span>👤 ${issue.citizenName}</span>
+                  <span>📅 ${formatDate(issue.createdAt)}</span>
+                  <span style="font-family:monospace;font-size:11px;background:var(--gray-light);padding:2px 6px;border-radius:4px">${issue.trackingNumber}</span>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
+                ${statusBadge(issue.status)}
+                ${issue.feedback?.rating ? `<span class="stars" style="font-size:14px">${stars(issue.feedback.rating)}</span>` : ''}
+              </div>
+            </div>
+            ${issue.assignedLeaderName ? `<div style="margin-top:6px;font-size:12px;color:var(--text-muted)">👮 Handled by: ${issue.assignedLeaderName}</div>` : ''}
+          </a>`).join('');
+    } catch (err) {
+      document.getElementById('content').innerHTML = `<div class="alert alert-error">${err.message}</div>`;
+    }
+  }
+</script>
+</body>
+</html>

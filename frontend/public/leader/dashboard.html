@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CitizenConnect — Leader Dashboard</title>
+  <link rel="stylesheet" href="/css/main.css">
+</head>
+<body>
+<div class="app-shell">
+  <header class="topbar" id="topbar"></header>
+  <div class="main-body">
+    <nav class="sidebar">
+      <div class="sidebar-section">
+        <div class="sidebar-label">Leader Panel</div>
+        <a class="nav-link active" href="dashboard.html"><span class="icon">📊</span> Dashboard</a>
+        <a class="nav-link" href="all-issues.html"><span class="icon">📥</span> All Issues</a>
+        <a class="nav-link" href="reports.html"><span class="icon">📈</span> Reports</a>
+        <a class="nav-link" href="notifications.html"><span class="icon">🔔</span> Notifications</a>
+      </div>
+    </nav>
+    <main class="content-area">
+      <div id="content"><div class="loading"><div class="spinner"></div></div></div>
+    </main>
+  </div>
+</div>
+<script src="/js/app.js"></script>
+<script>
+  const user = requireAuth('leader');
+  if (user) {
+    buildTopbar(document.getElementById('topbar'), true);
+    loadDashboard();
+  }
+
+  async function loadDashboard() {
+    try {
+      const [issuesData, reportsData] = await Promise.all([
+        API.getIssues({ status: 'pending', limit: 10 }),
+        API.getReports()
+      ]);
+      const r = reportsData.data;
+
+      document.getElementById('content').innerHTML = `
+        <h2 style="font-size:20px;font-weight:600;margin-bottom:1.5rem">
+          Leader Dashboard — ${user.name.split(' ')[0]} 🛡️
+        </h2>
+
+        <div class="stat-grid">
+          <div class="stat-card blue"><div class="stat-number">${r.total}</div><div class="stat-label">Total Issues</div></div>
+          <div class="stat-card amber"><div class="stat-number">${r.pending}</div><div class="stat-label">Pending</div></div>
+          <div class="stat-card"><div class="stat-number" style="color:var(--blue)">${r.in_progress}</div><div class="stat-label">In Progress</div></div>
+          <div class="stat-card green"><div class="stat-number">${r.resolved + r.closed}</div><div class="stat-label">Resolved</div></div>
+          <div class="stat-card green"><div class="stat-number">${r.resolutionRate}%</div><div class="stat-label">Resolution Rate</div></div>
+        </div>
+
+        ${r.pending > 0 ? `<div class="alert alert-info" style="margin-bottom:1.5rem">⚠️ <strong>${r.pending}</strong> issue${r.pending !== 1 ? 's' : ''} pending your attention.</div>` : '<div class="alert alert-success" style="margin-bottom:1.5rem">✅ All issues are attended to!</div>'}
+
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
+          <h3 style="font-size:16px;font-weight:600">🔴 Pending Issues — Needs Attention</h3>
+          <a href="all-issues.html" class="btn btn-secondary btn-sm">View all issues →</a>
+        </div>
+
+        ${issuesData.issues.length === 0
+          ? `<div class="empty-state"><div class="icon">🎉</div><h3>No pending issues!</h3><p>All caught up. Check resolved issues in <a href="all-issues.html">All Issues</a>.</p></div>`
+          : issuesData.issues.map(issue => `
+            <a class="issue-item" href="issue-respond.html?id=${issue._id}" style="border-left:3px solid var(--amber)">
+              <div class="issue-item-header">
+                <div>
+                  <div class="issue-item-title">${issue.title}</div>
+                  <div class="issue-item-meta">
+                    <span>🏷️ ${issue.category}</span>
+                    <span>${priorityBadge(issue.priority)}</span>
+                    <span>📍 ${issue.location.description}</span>
+                    <span>👤 ${issue.citizenName}</span>
+                    <span>📅 ${formatDate(issue.createdAt)}</span>
+                    <span style="font-family:monospace;font-size:11px;background:var(--gray-light);padding:2px 6px;border-radius:4px">${issue.trackingNumber}</span>
+                  </div>
+                </div>
+                <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
+                  ${statusBadge(issue.status)}
+                  <span class="btn btn-primary btn-sm">Respond →</span>
+                </div>
+              </div>
+            </a>`).join('')
+        }
+        ${issuesData.total > 10 ? `<a href="all-issues.html?status=pending" class="btn btn-secondary" style="margin-top:.5rem">View all ${issuesData.total} pending issues →</a>` : ''}
+      `;
+    } catch (err) {
+      document.getElementById('content').innerHTML = `<div class="alert alert-error">Failed to load dashboard: ${err.message}</div>`;
+    }
+  }
+</script>
+</body>
+</html>

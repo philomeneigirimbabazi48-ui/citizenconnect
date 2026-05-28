@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CitizenConnect — Notifications</title>
+  <link rel="stylesheet" href="/css/main.css">
+</head>
+<body>
+<div class="app-shell">
+  <header class="topbar" id="topbar"></header>
+  <div class="main-body">
+    <nav class="sidebar">
+      <div class="sidebar-section">
+        <div class="sidebar-label">Leader Panel</div>
+        <a class="nav-link" href="dashboard.html"><span class="icon">📊</span> Dashboard</a>
+        <a class="nav-link" href="all-issues.html"><span class="icon">📥</span> All Issues</a>
+        <a class="nav-link" href="reports.html"><span class="icon">📈</span> Reports</a>
+        <a class="nav-link active" href="notifications.html"><span class="icon">🔔</span> Notifications</a>
+      </div>
+    </nav>
+    <main class="content-area">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem">
+        <h2 style="font-size:20px;font-weight:600">Notifications</h2>
+        <button class="btn btn-secondary btn-sm" onclick="markAllRead()">✓ Mark all as read</button>
+      </div>
+      <div id="content"><div class="loading"><div class="spinner"></div></div></div>
+    </main>
+  </div>
+</div>
+<script src="/js/app.js"></script>
+<script>
+  requireAuth('leader');
+  buildTopbar(document.getElementById('topbar'), true);
+  loadNotifs();
+
+  async function loadNotifs() {
+    try {
+      const data = await API.getNotifs();
+      const c = document.getElementById('content');
+      if (!data.notifications.length) {
+        c.innerHTML = `<div class="empty-state"><div class="icon">🔔</div><h3>No notifications</h3><p>You'll be notified when citizens submit or comment on issues.</p></div>`;
+        return;
+      }
+      const typeIcons = {
+        issue_submitted: '📨', issue_updated: '🔄', issue_resolved: '✅',
+        new_response: '💬', status_change: '🔁', new_issue_assigned: '👮'
+      };
+      c.innerHTML = data.notifications.map(n => `
+        <div class="issue-item" style="cursor:default;${!n.isRead ? 'border-left:3px solid var(--amber);' : 'opacity:0.7'}" onclick="markRead('${n._id}', this)">
+          <div style="display:flex;gap:12px;align-items:flex-start">
+            <div style="font-size:24px;flex-shrink:0">${typeIcons[n.type] || '🔔'}</div>
+            <div style="flex:1">
+              <div style="font-size:14px;font-weight:${n.isRead ? '400' : '600'};margin-bottom:4px">${n.title}</div>
+              <div style="font-size:13px;color:var(--text-muted)">${n.message}</div>
+              <div style="font-size:11px;color:var(--text-muted);margin-top:6px">${timeAgo(n.createdAt)}</div>
+            </div>
+            ${n.issue ? `<a href="issue-respond.html?id=${n.issue._id || n.issue}" class="btn btn-primary btn-sm" style="flex-shrink:0;font-size:11px">Respond →</a>` : ''}
+          </div>
+        </div>`).join('');
+    } catch (err) {
+      document.getElementById('content').innerHTML = `<div class="alert alert-error">${err.message}</div>`;
+    }
+  }
+
+  async function markRead(id, el) {
+    try { await API.readNotif(id); el.style.opacity = '0.7'; el.style.borderLeft = ''; } catch (e) {}
+  }
+
+  async function markAllRead() {
+    try { await API.readAllNotifs(); loadNotifs(); } catch (e) {}
+  }
+</script>
+</body>
+</html>

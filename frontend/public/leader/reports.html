@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CitizenConnect — Reports & Statistics</title>
+  <link rel="stylesheet" href="/css/main.css">
+  <style>
+    .report-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem; }
+    .report-grid.full { grid-template-columns: 1fr; }
+    .donut-wrap { display: flex; align-items: center; justify-content: center; gap: 2rem; flex-wrap: wrap; }
+    .legend-item { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-bottom: 6px; }
+    .legend-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+    canvas { max-width: 100%; }
+    .kpi-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1.5rem; }
+    @media (max-width: 900px) { .report-grid { grid-template-columns: 1fr; } .kpi-row { grid-template-columns: 1fr 1fr; } }
+  </style>
+</head>
+<body>
+<div class="app-shell">
+  <header class="topbar" id="topbar"></header>
+  <div class="main-body">
+    <nav class="sidebar">
+      <div class="sidebar-section">
+        <div class="sidebar-label">Leader Panel</div>
+        <a class="nav-link" href="dashboard.html"><span class="icon">📊</span> Dashboard</a>
+        <a class="nav-link" href="all-issues.html"><span class="icon">📥</span> All Issues</a>
+        <a class="nav-link active" href="reports.html"><span class="icon">📈</span> Reports</a>
+        <a class="nav-link" href="notifications.html"><span class="icon">🔔</span> Notifications</a>
+      </div>
+    </nav>
+    <main class="content-area">
+      <h2 style="font-size:20px;font-weight:600;margin-bottom:1.5rem">📈 Reports & Statistics</h2>
+      <div id="content"><div class="loading"><div class="spinner"></div></div></div>
+    </main>
+  </div>
+</div>
+
+<script src="/js/app.js"></script>
+<script>
+  requireAuth('leader');
+  buildTopbar(document.getElementById('topbar'), true);
+  loadReports();
+
+  async function loadReports() {
+    try {
+      const data = await API.getReports();
+      const r = data.data;
+
+      const avgRatingHtml = r.avgRating
+        ? `<div class="stat-number green" style="color:var(--green-dark)">${r.avgRating.avg} <span style="font-size:20px">⭐</span></div><div class="stat-label">Avg. citizen rating (${r.avgRating.count} reviews)</div>`
+        : `<div class="stat-number" style="color:var(--gray)">—</div><div class="stat-label">No ratings yet</div>`;
+
+      document.getElementById('content').innerHTML = `
+        <!-- KPI row -->
+        <div class="kpi-row">
+          <div class="stat-card blue"><div class="stat-number">${r.total}</div><div class="stat-label">Total Issues</div></div>
+          <div class="stat-card green"><div class="stat-number">${r.resolutionRate}%</div><div class="stat-label">Resolution Rate</div></div>
+          <div class="stat-card">${avgRatingHtml}</div>
+        </div>
+
+        <!-- Status breakdown + Category chart -->
+        <div class="report-grid">
+          <div class="card">
+            <div class="card-title" style="margin-bottom:1.25rem">📊 Status Breakdown</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:1rem">
+              <div class="stat-card amber" style="padding:.75rem"><div class="stat-number" style="font-size:22px">${r.pending}</div><div class="stat-label">Pending</div></div>
+              <div class="stat-card" style="padding:.75rem"><div class="stat-number" style="font-size:22px;color:var(--blue)">${r.in_progress}</div><div class="stat-label">In Progress</div></div>
+              <div class="stat-card green" style="padding:.75rem"><div class="stat-number" style="font-size:22px">${r.resolved}</div><div class="stat-label">Resolved</div></div>
+              <div class="stat-card" style="padding:.75rem"><div class="stat-number" style="font-size:22px;color:var(--gray)">${r.closed}</div><div class="stat-label">Closed</div></div>
+            </div>
+            <!-- Progress bar breakdown -->
+            ${r.total > 0 ? `
+            <div style="margin-top:1rem">
+              <div style="height:20px;border-radius:20px;overflow:hidden;display:flex;background:var(--gray-light)">
+                <div style="width:${Math.round(r.pending/r.total*100)}%;background:var(--amber);transition:width .6s"></div>
+                <div style="width:${Math.round(r.in_progress/r.total*100)}%;background:var(--blue);transition:width .6s"></div>
+                <div style="width:${Math.round(r.resolved/r.total*100)}%;background:var(--green);transition:width .6s"></div>
+                <div style="width:${Math.round(r.closed/r.total*100)}%;background:var(--gray);transition:width .6s"></div>
+              </div>
+              <div style="display:flex;gap:16px;margin-top:8px;flex-wrap:wrap">
+                <div class="legend-item"><div class="legend-dot" style="background:var(--amber)"></div>Pending</div>
+                <div class="legend-item"><div class="legend-dot" style="background:var(--blue)"></div>In Progress</div>
+                <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div>Resolved</div>
+                <div class="legend-item"><div class="legend-dot" style="background:var(--gray)"></div>Closed</div>
+              </div>
+            </div>` : ''}
+          </div>
+
+          <div class="card">
+            <div class="card-title" style="margin-bottom:1.25rem">🏷️ Issues by Category</div>
+            ${r.byCategory.length === 0
+              ? '<p style="color:var(--text-muted);font-size:13px">No data yet.</p>'
+              : (() => {
+                  const max = Math.max(...r.byCategory.map(c => c.count));
+                  const colors = ['#1D9E75','#378ADD','#BA7517','#A32D2D','#888780','#5B4FCF','#D97706','#059669','#DC2626','#7C3AED'];
+                  return r.byCategory.map((cat, idx) => `
+                    <div class="bar-row">
+                      <div class="bar-label">${cat._id}</div>
+                      <div class="bar-track">
+                        <div class="bar-fill" style="width:${Math.round(cat.count/max*100)}%;background:${colors[idx % colors.length]}"></div>
+                      </div>
+                      <div class="bar-val">${cat.count}</div>
+                    </div>`).join('');
+                })()
+            }
+          </div>
+        </div>
+
+        <!-- Location chart -->
+        <div class="report-grid">
+          <div class="card">
+            <div class="card-title" style="margin-bottom:1.25rem">📍 Issues by District</div>
+            ${r.byDistrict.length === 0
+              ? '<p style="color:var(--text-muted);font-size:13px">No location data yet.</p>'
+              : (() => {
+                  const max = Math.max(...r.byDistrict.map(d => d.count));
+                  return r.byDistrict.map(d => `
+                    <div class="bar-row">
+                      <div class="bar-label">${d._id || 'Unknown'}</div>
+                      <div class="bar-track">
+                        <div class="bar-fill" style="width:${Math.round(d.count/max*100)}%;background:var(--blue)"></div>
+                      </div>
+                      <div class="bar-val">${d.count}</div>
+                    </div>`).join('');
+                })()
+            }
+          </div>
+
+          <div class="card">
+            <div class="card-title" style="margin-bottom:1.25rem">🎯 Performance Summary</div>
+            <div style="space-y:8px">
+              <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border);font-size:14px">
+                <span>Total issues received</span><strong>${r.total}</strong>
+              </div>
+              <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border);font-size:14px">
+                <span>Issues resolved/closed</span><strong style="color:var(--green-dark)">${r.resolved + r.closed}</strong>
+              </div>
+              <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border);font-size:14px">
+                <span>Issues still open</span><strong style="color:var(--amber)">${r.pending + r.in_progress}</strong>
+              </div>
+              <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border);font-size:14px">
+                <span>Resolution rate</span>
+                <strong style="color:${r.resolutionRate >= 70 ? 'var(--green-dark)' : r.resolutionRate >= 40 ? 'var(--amber)' : 'var(--red)'}">
+                  ${r.resolutionRate}% ${r.resolutionRate >= 70 ? '🟢' : r.resolutionRate >= 40 ? '🟡' : '🔴'}
+                </strong>
+              </div>
+              <div style="display:flex;justify-content:space-between;padding:10px 0;font-size:14px">
+                <span>Citizen satisfaction</span>
+                <strong>${r.avgRating ? r.avgRating.avg + ' / 5 ⭐' : 'No data yet'}</strong>
+              </div>
+            </div>
+            <div style="margin-top:1.5rem">
+              <div style="font-size:13px;color:var(--text-muted);margin-bottom:6px">Overall resolution progress</div>
+              <div style="height:12px;border-radius:20px;background:var(--gray-light);overflow:hidden">
+                <div style="width:${r.resolutionRate}%;background:var(--green);height:100%;border-radius:20px;transition:width .6s"></div>
+              </div>
+              <div style="font-size:12px;color:var(--text-muted);margin-top:4px;text-align:right">${r.resolutionRate}% complete</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Export note -->
+        <div class="card" style="background:var(--green-light);border-color:var(--green)">
+          <div style="display:flex;align-items:center;gap:12px">
+            <div style="font-size:24px">📥</div>
+            <div>
+              <div style="font-weight:500;font-size:14px">Export Reports</div>
+              <div style="font-size:13px;color:var(--text-muted);margin-top:2px">
+                Use the API endpoint <code style="background:rgba(0,0,0,0.06);padding:2px 6px;border-radius:4px">GET /api/reports/summary</code> to integrate with Excel or other reporting tools.
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    } catch (err) {
+      document.getElementById('content').innerHTML = `<div class="alert alert-error">Failed to load reports: ${err.message}</div>`;
+    }
+  }
+</script>
+</body>
+</html>

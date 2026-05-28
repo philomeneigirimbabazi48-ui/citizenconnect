@@ -1,0 +1,9 @@
+{
+  "name": "citizenconnect-frontend",
+  "version": "1.0.0",
+  "description": "CitizenConnect Frontend",
+  "scripts": {
+    "start": "npx serve public -p 3000",
+    "dev": "npx live-server public --port=3000"
+  }
+}

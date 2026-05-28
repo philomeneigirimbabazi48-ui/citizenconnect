@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CitizenConnect — Submit Issue</title>
+  <link rel="stylesheet" href="/css/main.css">
+</head>
+<body>
+<div class="app-shell">
+  <header class="topbar" id="topbar"></header>
+  <div class="main-body">
+    <nav class="sidebar">
+      <div class="sidebar-section">
+        <div class="sidebar-label">Main</div>
+        <a class="nav-link" href="dashboard.html"><span class="icon">📊</span> Dashboard</a>
+        <a class="nav-link active" href="submit.html"><span class="icon">➕</span> Submit Issue</a>
+        <a class="nav-link" href="my-issues.html"><span class="icon">📋</span> My Issues</a>
+        <a class="nav-link" href="notifications.html"><span class="icon">🔔</span> Notifications</a>
+      </div>
+      <div class="sidebar-section" style="margin-top:1rem">
+        <a class="nav-link" href="profile.html"><span class="icon">👤</span> Profile</a>
+      </div>
+    </nav>
+    <main class="content-area">
+      <h2 style="font-size:20px;font-weight:600;margin-bottom:1.5rem">Submit a New Issue</h2>
+
+      <div id="success-box" style="display:none" class="tracking-box">
+        <div style="font-size:32px;margin-bottom:.5rem">✅</div>
+        <div style="font-size:16px;font-weight:500;color:var(--green-dark);margin-bottom:.5rem">Issue submitted successfully!</div>
+        <div class="tracking-number" id="tracking-display">CC-XXX</div>
+        <div style="font-size:13px;color:var(--text-muted);margin-top:.5rem">Save this tracking number to follow up on your issue.</div>
+        <div style="margin-top:1rem;display:flex;gap:8px;justify-content:center">
+          <a href="my-issues.html" class="btn btn-primary">View my issues</a>
+          <button class="btn btn-secondary" onclick="resetForm()">Submit another</button>
+        </div>
+      </div>
+
+      <div id="form-wrap" class="card">
+        <div id="alert-box"></div>
+
+        <div class="form-group">
+          <label>Issue title *</label>
+          <input type="text" id="f-title" placeholder="Brief, clear description of the problem" oninput="debounceCategorize()">
+        </div>
+
+        <div class="form-group">
+          <label>Description *</label>
+          <textarea id="f-desc" placeholder="Describe the issue in detail. Include how long it has been a problem, who it affects, and any other relevant information." oninput="debounceCategorize()"></textarea>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Category *</label>
+            <select id="f-cat">
+              <option value="">Select category...</option>
+              <option>Infrastructure</option><option>Roads</option><option>Sanitation</option>
+              <option>Water</option><option>Health</option><option>Education</option>
+              <option>Security</option><option>Agriculture</option><option>Environment</option><option>Other</option>
+            </select>
+            <div class="form-hint" id="ai-cat-hint" style="color:var(--green-dark)"></div>
+          </div>
+          <div class="form-group">
+            <label>Priority</label>
+            <select id="f-priority">
+              <option value="low">Low</option>
+              <option value="medium" selected>Medium</option>
+              <option value="high">High</option>
+              <option value="urgent">Urgent</option>
+            </select>
+            <div class="form-hint" id="ai-priority-hint" style="color:var(--green-dark)"></div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Location description *</label>
+          <input type="text" id="f-loc" placeholder="e.g. KN 5 Avenue near Kicukiro Market">
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>District</label>
+            <input type="text" id="f-district" placeholder="e.g. Kicukiro">
+          </div>
+          <div class="form-group">
+            <label>Sector</label>
+            <input type="text" id="f-sector" placeholder="e.g. Remera">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Photos (optional, max 5)</label>
+          <div class="file-upload-area" onclick="document.getElementById('f-photos').click()">
+            📷 Click to add photos of the issue
+            <input type="file" id="f-photos" accept="image/*" multiple style="display:none" onchange="previewPhotos()">
+          </div>
+          <div class="file-preview" id="photo-preview"></div>
+        </div>
+
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <a href="dashboard.html" class="btn btn-secondary">Cancel</a>
+          <button class="btn btn-primary btn-lg" id="submit-btn" onclick="submitIssue()">🚀 Submit Issue</button>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<script src="/js/app.js"></script>
+<script>
+  requireAuth('citizen');
+  buildTopbar(document.getElementById('topbar'), false);
+
+  let categorizeTimer = null;
+  function debounceCategorize() {
+    clearTimeout(categorizeTimer);
+    categorizeTimer = setTimeout(aiCategorize, 1200);
+  }
+
+  async function aiCategorize() {
+    const title = document.getElementById('f-title').value;
+    const desc = document.getElementById('f-desc').value;
+    if (title.length < 10 && desc.length < 20) return;
+    try {
+      const data = await API.categorize({ title, description: desc });
+      if (data.category) {
+        document.getElementById('f-cat').value = data.category;
+        document.getElementById('ai-cat-hint').textContent = '🤖 AI suggested: ' + data.category;
+      }
+      if (data.priority) {
+        document.getElementById('f-priority').value = data.priority;
+        document.getElementById('ai-priority-hint').textContent = '🤖 AI suggested: ' + data.priority;
+      }
+    } catch (e) {}
+  }
+
+  function previewPhotos() {
+    const files = document.getElementById('f-photos').files;
+    const preview = document.getElementById('photo-preview');
+    preview.innerHTML = '';
+    Array.from(files).slice(0, 5).forEach(f => {
+      const img = document.createElement('img');
+      img.src = URL.createObjectURL(f);
+      preview.appendChild(img);
+    });
+  }
+
+  async function submitIssue() {
+    const btn = document.getElementById('submit-btn');
+    const alertBox = document.getElementById('alert-box');
+    const title = document.getElementById('f-title').value.trim();
+    const desc = document.getElementById('f-desc').value.trim();
+    const cat = document.getElementById('f-cat').value;
+    const loc = document.getElementById('f-loc').value.trim();
+    if (!title || !desc || !cat || !loc) { showAlert(alertBox, 'Please fill all required fields (*).', 'error'); return; }
+
+    btn.disabled = true; btn.textContent = 'Submitting...';
+
+    const fd = new FormData();
+    fd.append('title', title);
+    fd.append('description', desc);
+    fd.append('category', cat);
+    fd.append('priority', document.getElementById('f-priority').value);
+    fd.append('locationDescription', loc);
+    fd.append('district', document.getElementById('f-district').value);
+    fd.append('sector', document.getElementById('f-sector').value);
+    const photos = document.getElementById('f-photos').files;
+    Array.from(photos).forEach(f => fd.append('photos', f));
+
+    try {
+      const data = await API.submitIssue(fd);
+      document.getElementById('form-wrap').style.display = 'none';
+      document.getElementById('tracking-display').textContent = data.issue.trackingNumber;
+      document.getElementById('success-box').style.display = 'block';
+    } catch (err) {
+      showAlert(alertBox, err.message, 'error');
+      btn.disabled = false; btn.textContent = '🚀 Submit Issue';
+    }
+  }
+
+  function resetForm() {
+    document.getElementById('form-wrap').style.display = 'block';
+    document.getElementById('success-box').style.display = 'none';
+    document.getElementById('f-title').value = '';
+    document.getElementById('f-desc').value = '';
+    document.getElementById('f-cat').value = '';
+    document.getElementById('f-loc').value = '';
+    document.getElementById('photo-preview').innerHTML = '';
+    document.getElementById('submit-btn').disabled = false;
+    document.getElementById('submit-btn').textContent = '🚀 Submit Issue';
+  }
+</script>
+</body>
+</html>

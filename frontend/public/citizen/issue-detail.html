@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CitizenConnect — Issue Detail</title>
+  <link rel="stylesheet" href="/css/main.css">
+</head>
+<body>
+<div class="app-shell">
+  <header class="topbar" id="topbar"></header>
+  <div class="main-body">
+    <nav class="sidebar">
+      <div class="sidebar-section">
+        <a class="nav-link" href="dashboard.html"><span class="icon">📊</span> Dashboard</a>
+        <a class="nav-link" href="submit.html"><span class="icon">➕</span> Submit Issue</a>
+        <a class="nav-link active" href="my-issues.html"><span class="icon">📋</span> My Issues</a>
+        <a class="nav-link" href="notifications.html"><span class="icon">🔔</span> Notifications</a>
+      </div>
+    </nav>
+    <main class="content-area">
+      <a href="my-issues.html" class="btn btn-secondary btn-sm" style="margin-bottom:1rem">← Back to my issues</a>
+      <div id="content"><div class="loading"><div class="spinner"></div></div></div>
+    </main>
+  </div>
+</div>
+<script src="/js/app.js"></script>
+<script>
+  requireAuth('citizen');
+  buildTopbar(document.getElementById('topbar'), false);
+  const issueId = new URLSearchParams(location.search).get('id');
+  if (!issueId) location.href = 'my-issues.html';
+  else loadIssue();
+
+  async function loadIssue() {
+    try {
+      const data = await API.getIssue(issueId);
+      const i = data.issue;
+      const canFeedback = i.status === 'resolved' && !i.feedback?.rating;
+
+      document.getElementById('content').innerHTML = `
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:1.5rem;flex-wrap:wrap;gap:8px">
+          <div>
+            <div style="font-family:monospace;font-size:12px;background:var(--gray-light);padding:3px 10px;border-radius:6px;display:inline-block;margin-bottom:8px">${i.trackingNumber}</div>
+            <h2 style="font-size:20px;font-weight:600">${i.title}</h2>
+            <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+              ${statusBadge(i.status)} ${priorityBadge(i.priority)}
+              <span style="font-size:13px;color:var(--text-muted)">🏷️ ${i.category}</span>
+              <span style="font-size:13px;color:var(--text-muted)">📅 ${formatDate(i.createdAt)}</span>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:2fr 1fr;gap:1.5rem;align-items:start">
+          <div>
+            <div class="card" style="margin-bottom:1rem">
+              <div class="card-title" style="margin-bottom:1rem">📝 Description</div>
+              <p style="font-size:14px;line-height:1.7;color:var(--text-muted)">${i.description}</p>
+              <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px">
+                <div><strong>📍 Location:</strong><br><span style="color:var(--text-muted)">${i.location.description}</span></div>
+                ${i.location.district ? `<div><strong>🏛️ District:</strong><br><span style="color:var(--text-muted)">${i.location.district}${i.location.sector ? ', ' + i.location.sector : ''}</span></div>` : ''}
+              </div>
+            </div>
+
+            ${i.photos?.length ? `
+              <div class="card" style="margin-bottom:1rem">
+                <div class="card-title" style="margin-bottom:1rem">📷 Photos</div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                  ${i.photos.map(p => `<img src="http://localhost:5000${p}" style="width:120px;height:90px;object-fit:cover;border-radius:var(--radius);border:1px solid var(--border)">`).join('')}
+                </div>
+              </div>` : ''}
+
+            ${i.response ? `
+              <div class="card" style="margin-bottom:1rem;border-color:var(--green-mid)">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:1rem">
+                  <div class="avatar leader">${initials(i.assignedLeaderName || 'L')}</div>
+                  <div>
+                    <div style="font-weight:500;font-size:14px">${i.assignedLeaderName || 'Leader'}</div>
+                    <div style="font-size:12px;color:var(--text-muted)">${formatDate(i.responseDate)}</div>
+                  </div>
+                </div>
+                <p style="font-size:14px;line-height:1.7">${i.response}</p>
+                ${i.resolutionTime ? `<div style="margin-top:8px;font-size:12px;color:var(--text-muted)">⏱️ Estimated resolution: ${i.resolutionTime}</div>` : ''}
+              </div>` : ''}
+
+            <!-- Comments -->
+            <div class="card" style="margin-bottom:1rem">
+              <div class="card-title" style="margin-bottom:1rem">💬 Comments (${i.comments?.length || 0})</div>
+              ${(i.comments || []).map(c => `
+                <div style="display:flex;gap:10px;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--border)">
+                  <div class="avatar ${c.authorRole === 'leader' ? 'leader' : ''}">${initials(c.authorName)}</div>
+                  <div>
+                    <div style="font-size:13px;font-weight:500">${c.authorName} <span style="color:var(--text-muted);font-weight:400;font-size:11px">${timeAgo(c.createdAt)}</span></div>
+                    <div style="font-size:13px;color:var(--text-muted);margin-top:3px">${c.text}</div>
+                  </div>
+                </div>`).join('') || '<p style="font-size:13px;color:var(--text-muted)">No comments yet.</p>'}
+              <div style="margin-top:1rem;display:flex;gap:8px">
+                <input type="text" id="comment-input" placeholder="Add a comment..." style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius);font-size:14px;outline:none">
+                <button class="btn btn-primary btn-sm" onclick="addComment()">Send</button>
+              </div>
+            </div>
+
+            ${canFeedback ? `
+              <div class="card" style="border-color:var(--green)">
+                <div class="card-title" style="margin-bottom:1rem">⭐ Give Feedback & Close Issue</div>
+                <p style="font-size:13px;color:var(--text-muted);margin-bottom:1rem">Your issue has been resolved. Please rate the response and close the issue.</p>
+                <div class="form-group">
+                  <label>Rating</label>
+                  <div style="font-size:28px;cursor:pointer" id="star-display">☆☆☆☆☆</div>
+                  <input type="hidden" id="rating-val" value="0">
+                </div>
+                <div class="form-group">
+                  <label>Comment (optional)</label>
+                  <textarea id="feedback-comment" placeholder="How satisfied are you with the response?"></textarea>
+                </div>
+                <button class="btn btn-primary" onclick="submitFeedback()">Submit feedback & close issue</button>
+              </div>` :
+              i.feedback?.rating ? `<div class="card"><div class="card-title">Your feedback</div><div class="stars" style="font-size:24px;margin:8px 0">${stars(i.feedback.rating)}</div><p style="font-size:13px;color:var(--text-muted)">${i.feedback.comment || 'No comment.'}</p></div>` : ''}
+          </div>
+
+          <!-- Timeline sidebar -->
+          <div class="card">
+            <div class="card-title" style="margin-bottom:1rem">🕐 Timeline</div>
+            <div class="timeline">
+              ${(i.statusHistory || []).map((h, idx) => `
+                <div class="tl-item">
+                  <div class="tl-dot ${h.status === 'in_progress' ? 'blue' : h.status === 'pending' ? 'amber' : ''}"></div>
+                  <div class="tl-content">
+                    <div class="tl-title">${h.status.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}</div>
+                    <div class="tl-date">${formatDate(h.changedAt)} · ${h.changedByName || ''}</div>
+                    ${h.note ? `<div class="tl-text">${h.note}</div>` : ''}
+                  </div>
+                </div>`).join('')}
+            </div>
+          </div>
+        </div>
+      `;
+
+      // Star rating interaction
+      const starDisplay = document.getElementById('star-display');
+      if (starDisplay) {
+        starDisplay.addEventListener('click', e => {
+          const rect = starDisplay.getBoundingClientRect();
+          const x = e.clientX - rect.left;
+          const rating = Math.ceil(x / (rect.width / 5));
+          document.getElementById('rating-val').value = rating;
+          starDisplay.textContent = '★'.repeat(rating) + '☆'.repeat(5 - rating);
+          starDisplay.style.color = '#F0D060';
+        });
+      }
+    } catch (err) {
+      document.getElementById('content').innerHTML = `<div class="alert alert-error">${err.message}</div>`;
+    }
+  }
+
+  async function addComment() {
+    const input = document.getElementById('comment-input');
+    if (!input || !input.value.trim()) return;
+    try {
+      await API.addComment(issueId, input.value.trim());
+      loadIssue();
+    } catch (err) { alert(err.message); }
+  }
+
+  async function submitFeedback() {
+    const rating = parseInt(document.getElementById('rating-val').value);
+    if (!rating) { alert('Please select a star rating.'); return; }
+    const comment = document.getElementById('feedback-comment').value;
+    try {
+      await API.addFeedback(issueId, { rating, comment });
+      loadIssue();
+    } catch (err) { alert(err.message); }
+  }
+</script>
+</body>
+</html>

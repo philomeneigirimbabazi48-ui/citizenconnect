@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CitizenConnect — My Issues</title>
+  <link rel="stylesheet" href="/css/main.css">
+</head>
+<body>
+<div class="app-shell">
+  <header class="topbar" id="topbar"></header>
+  <div class="main-body">
+    <nav class="sidebar">
+      <div class="sidebar-section">
+        <div class="sidebar-label">Main</div>
+        <a class="nav-link" href="dashboard.html"><span class="icon">📊</span> Dashboard</a>
+        <a class="nav-link" href="submit.html"><span class="icon">➕</span> Submit Issue</a>
+        <a class="nav-link active" href="my-issues.html"><span class="icon">📋</span> My Issues</a>
+        <a class="nav-link" href="notifications.html"><span class="icon">🔔</span> Notifications</a>
+      </div>
+      <div class="sidebar-section" style="margin-top:1rem">
+        <a class="nav-link" href="profile.html"><span class="icon">👤</span> Profile</a>
+      </div>
+    </nav>
+    <main class="content-area">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem">
+        <h2 style="font-size:20px;font-weight:600">My Issues</h2>
+        <div style="display:flex;gap:8px;align-items:center">
+          <select id="filter-status" onchange="loadIssues()" style="padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;background:var(--surface)">
+            <option value="">All statuses</option>
+            <option value="pending">Pending</option>
+            <option value="in_progress">In Progress</option>
+            <option value="resolved">Resolved</option>
+            <option value="closed">Closed</option>
+          </select>
+          <a href="submit.html" class="btn btn-primary btn-sm">+ New issue</a>
+        </div>
+      </div>
+      <div id="content"><div class="loading"><div class="spinner"></div></div></div>
+    </main>
+  </div>
+</div>
+<script src="/js/app.js"></script>
+<script>
+  requireAuth('citizen');
+  buildTopbar(document.getElementById('topbar'), false);
+  loadIssues();
+
+  async function loadIssues() {
+    const status = document.getElementById('filter-status').value;
+    const params = { limit: 50 };
+    if (status) params.status = status;
+    try {
+      const data = await API.getIssues(params);
+      const c = document.getElementById('content');
+      if (!data.issues.length) {
+        c.innerHTML = `<div class="empty-state"><div class="icon">📭</div><h3>No issues found</h3><p>Try a different filter or submit a new issue.</p><a href="submit.html" class="btn btn-primary" style="margin-top:1rem">Submit issue</a></div>`;
+        return;
+      }
+      c.innerHTML = `<p style="font-size:13px;color:var(--text-muted);margin-bottom:1rem">${data.total} issue${data.total !== 1 ? 's' : ''} found</p>` +
+        data.issues.map(issue => `
+          <a class="issue-item" href="issue-detail.html?id=${issue._id}">
+            <div class="issue-item-header">
+              <div>
+                <div class="issue-item-title">${issue.title}</div>
+                <div class="issue-item-meta">
+                  <span>🏷️ ${issue.category}</span>
+                  <span>${priorityBadge(issue.priority)}</span>
+                  <span>📍 ${issue.location.description}</span>
+                  <span>📅 ${formatDate(issue.createdAt)}</span>
+                  <span style="font-family:monospace;font-size:11px;background:var(--gray-light);padding:2px 6px;border-radius:4px">${issue.trackingNumber}</span>
+                </div>
+              </div>
+              ${statusBadge(issue.status)}
+            </div>
+            ${issue.assignedLeaderName ? `<div style="margin-top:8px;font-size:12px;color:var(--text-muted)">👮 Assigned to: ${issue.assignedLeaderName}</div>` : ''}
+            ${issue.response ? `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-size:13px;color:var(--text-muted)">💬 ${issue.response.slice(0, 120)}${issue.response.length > 120 ? '...' : ''}</div>` : ''}
+          </a>`).join('');
+    } catch (err) {
+      document.getElementById('content').innerHTML = `<div class="alert alert-error">${err.message}</div>`;
+    }
+  }
+</script>
+</body>
+</html>
