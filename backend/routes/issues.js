@@ -7,7 +7,6 @@ const Issue = require('../models/Issue');
 const Notification = require('../models/Notification');
 const { protect, restrictTo } = require('../middleware/auth');
 
-// Multer setup for photo uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const dir = './uploads/issues';
@@ -25,24 +24,20 @@ const upload = multer({
   }
 });
 
-// Helper: create notification
 async function notify(recipientId, type, title, message, issueId) {
   try {
     await Notification.create({ recipient: recipientId, type, title, message, issue: issueId });
   } catch (e) { console.error('Notification error:', e.message); }
 }
 
-// ── GET /api/issues — list issues ─────────────────────────────
 router.get('/', protect, async (req, res) => {
   try {
     const { status, category, district, page = 1, limit = 20 } = req.query;
     const filter = {};
-
     if (req.user.role === 'citizen') filter.citizen = req.user._id;
     if (status) filter.status = status;
     if (category) filter.category = category;
     if (district) filter['location.district'] = district;
-
     const total = await Issue.countDocuments(filter);
     const issues = await Issue.find(filter)
       .sort({ createdAt: -1 })
@@ -50,40 +45,38 @@ router.get('/', protect, async (req, res) => {
       .limit(Number(limit))
       .populate('citizen', 'name email')
       .populate('assignedLeader', 'name email');
-
     res.json({ success: true, total, page: Number(page), pages: Math.ceil(total / limit), issues });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 });
 
-// ── POST /api/issues — submit new issue ───────────────────────
 router.post('/', protect, restrictTo('citizen'), upload.array('photos', 5), async (req, res) => {
   try {
     const { title, description, category, priority, locationDescription, sector, district, province, lat, lng } = req.body;
     const photos = req.files ? req.files.map(f => '/uploads/issues/' + f.filename) : [];
-
     const issue = await Issue.create({
       title, description, category,
       priority: priority || 'medium',
-      location: { description: locationDescription, sector, district, province, coordinates: { lat: Number(lat), lng: Number(lng) } },
+      location: {
+        description: locationDescription, sector, district, province,
+        coordinates: {
+          lat: lat ? Number(lat) : undefined,
+          lng: lng ? Number(lng) : undefined
+        }
+      },
       citizen: req.user._id,
       citizenName: req.user.name,
       photos,
       statusHistory: [{ status: 'pending', changedByName: req.user.name, note: 'Issue submitted' }]
     });
-
-    // Notify all leaders (in production, notify by district)
-    // For now, just confirm to citizen
     await notify(req.user._id, 'issue_submitted', 'Issue submitted', `Your issue "${title}" (${issue.trackingNumber}) has been submitted successfully.`, issue._id);
-
     res.status(201).json({ success: true, message: 'Issue submitted successfully.', issue });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 });
 
-// ── GET /api/issues/:id — get single issue ────────────────────
 router.get('/:id', protect, async (req, res) => {
   try {
     const issue = await Issue.findById(req.params.id)
@@ -99,37 +92,30 @@ router.get('/:id', protect, async (req, res) => {
   }
 });
 
-// ── PATCH /api/issues/:id/status — update status (leader) ─────
 router.patch('/:id/status', protect, restrictTo('leader', 'admin'), async (req, res) => {
   try {
     const { status, note, estimatedResolutionDate } = req.body;
     const issue = await Issue.findById(req.params.id);
     if (!issue) return res.status(404).json({ success: false, message: 'Issue not found.' });
-
-    const oldStatus = issue.status;
     issue.status = status;
     issue.assignedLeader = issue.assignedLeader || req.user._id;
     issue.assignedLeaderName = issue.assignedLeaderName || req.user.name;
     if (estimatedResolutionDate) issue.estimatedResolutionDate = estimatedResolutionDate;
     issue.statusHistory.push({ status, changedBy: req.user._id, changedByName: req.user.name, note });
     await issue.save();
-
     await notify(issue.citizen, 'status_change', 'Issue status updated',
       `Your issue "${issue.title}" (${issue.trackingNumber}) is now: ${status.replace('_', ' ')}.`, issue._id);
-
     res.json({ success: true, message: 'Status updated.', issue });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 });
 
-// ── PATCH /api/issues/:id/respond — leader responds ──────────
 router.patch('/:id/respond', protect, restrictTo('leader', 'admin'), async (req, res) => {
   try {
     const { response, resolutionTime, status } = req.body;
     const issue = await Issue.findById(req.params.id);
     if (!issue) return res.status(404).json({ success: false, message: 'Issue not found.' });
-
     issue.response = response;
     issue.responseDate = new Date();
     issue.resolutionTime = resolutionTime;
@@ -140,39 +126,31 @@ router.patch('/:id/respond', protect, restrictTo('leader', 'admin'), async (req,
       issue.statusHistory.push({ status, changedBy: req.user._id, changedByName: req.user.name, note: 'Response provided' });
     }
     await issue.save();
-
     await notify(issue.citizen, 'new_response', 'Leader responded to your issue',
       `${req.user.name} responded to "${issue.title}": ${response.slice(0, 100)}...`, issue._id);
-
     res.json({ success: true, message: 'Response sent.', issue });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 });
 
-// ── POST /api/issues/:id/comments — add comment ───────────────
 router.post('/:id/comments', protect, async (req, res) => {
   try {
     const { text } = req.body;
     const issue = await Issue.findById(req.params.id);
     if (!issue) return res.status(404).json({ success: false, message: 'Issue not found.' });
-
     issue.comments.push({ author: req.user._id, authorName: req.user.name, authorRole: req.user.role, text });
     await issue.save();
-
-    // Notify the other party
     const recipientId = req.user.role === 'citizen' ? issue.assignedLeader : issue.citizen;
     if (recipientId) {
       await notify(recipientId, 'new_response', 'New comment on issue', `${req.user.name} commented on "${issue.title}".`, issue._id);
     }
-
     res.json({ success: true, message: 'Comment added.', issue });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 });
 
-// ── POST /api/issues/:id/feedback — citizen feedback ─────────
 router.post('/:id/feedback', protect, restrictTo('citizen'), async (req, res) => {
   try {
     const { rating, comment } = req.body;
@@ -180,11 +158,9 @@ router.post('/:id/feedback', protect, restrictTo('citizen'), async (req, res) =>
     if (!issue) return res.status(404).json({ success: false, message: 'Issue not found.' });
     if (issue.citizen.toString() !== req.user._id.toString()) return res.status(403).json({ success: false, message: 'Access denied.' });
     if (issue.status !== 'resolved') return res.status(400).json({ success: false, message: 'Can only give feedback on resolved issues.' });
-
     issue.feedback = { rating, comment, submittedAt: new Date() };
     issue.status = 'closed';
     await issue.save();
-
     res.json({ success: true, message: 'Feedback submitted. Issue closed.', issue });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
